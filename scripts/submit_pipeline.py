@@ -66,7 +66,13 @@ def main() -> None:
     # (get the name), wait (block for a terminal phase), get (real status).
     name = run(
         ["argo", "submit", "-n", "argo", str(PIPELINE_MANIFEST), "--entrypoint", entrypoint,
-         "--parameter", f"image={image}", "-o", "name"],
+         "--parameter", f"image={image}",
+         # The exit handler reads these back off the workflow itself
+         # (agent/context_builder.py) -- it has no host checkout to
+         # compute them from.
+         "--parameter", f"commit-sha={commit_sha}",
+         "--parameter", f"changed-files={','.join(changed_files)}",
+         "-o", "name"],
         capture_output=True, text=True,
     ).stdout.strip()
     subprocess.run(["argo", "wait", "-n", "argo", name], check=False)

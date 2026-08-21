@@ -1,0 +1,117 @@
+# The exit hook: a TWO-step DAG, not a single container (DECISIONS.md #29).
+#
+# The tempting single-step design -- clone, tar, declare the tarball as this
+# step's own output artifact, then read back its minio key to hand to the
+# verify workflow -- deadlocks: Argo's executor only uploads a node's output
+# artifacts AFTER that node's container exits, so the key does not exist
+# while the code that needs it is still running.
+#
+# Splitting the clone into its own preceding step fixes that with no S3
+# client and no credentials in application code: `fetch-source` completes,
+# Argo uploads its artifact, and `run-agent` then both receives the tree as
+# an input artifact AND can look up its key in the workflow's own status.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-agent-wft
+  namespace: argo
+spec:
+  serviceAccountName: exit-handler-sa
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: commit-sha
+      # The image the failing pipeline actually ran. fetch-source takes the
+      # source straight out of it rather than re-cloning from GitHub.
+      - name: image
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: fetch-source
+            template: fetch-source
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image}}"
+          - name: run-agent
+            template: run-agent
+            depends: fetch-source
+            arguments:
+              artifacts:
+                - name: source
+                  from: "{{tasks.fetch-source.outputs.artifacts.source}}"
+
+    # Step 1: take the source out of the very image the failing pipeline
+    # ran. Originally this cloned from GitHub, which fails against a
+    # private repo with no credentials in-cluster (see LOG.md) -- and
+    # copying from the image turned out to be the better design anyway:
+    # no token in the cluster, no egress, and the tree is byte-for-byte
+    # what actually failed rather than a re-clone that merely should match.
+    - name: fetch-source
+      # Per-TEMPLATE, not just spec-level: a templateRef borrows templates
+      # only, so the workflow-level serviceAccountName above does NOT apply
+      # when this is invoked as a hook -- the pods silently fall back to the
+      # calling namespace's `default` SA (see LOG.md).
+      serviceAccountName: exit-handler-sa
+      inputs:
+        parameters:
+          - name: image
+      outputs:
+        artifacts:
+          - name: source
+            path: /workspace/src
+      container:
+        image: "{{inputs.parameters.image}}"
+        imagePullPolicy: Never
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -e
+            mkdir -p /workspace/src
+            cp -r /app/. /workspace/src/
+            rm -rf /workspace/src/.git
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: "1", memory: 512Mi}
+
+    # Step 2: assemble the live FailureContext and run the graph. Receives
+    # the checkout as an input artifact, and HOOK_WORKFLOW_NAME so
+    # ArgoVerifier can find step 1's uploaded artifact key.
+    - name: run-agent
+      serviceAccountName: exit-handler-sa
+      inputs:
+        artifacts:
+          - name: source
+            path: /workspace/src
+      container:
+        image: agentic-fixer-agent:latest
+        imagePullPolicy: Never
+        command: ["python", "-m", "agent.context_builder"]
+        args:
+          # {{workflow.name}}/{{workflow.namespace}}, NOT
+          # {{workflow.parameters.*}}: a hook's arguments.parameters bind to
+          # the referenced template's inputs, while workflow.parameters
+          # resolves against the CALLING workflow's own parameters -- so
+          # names that only exist as hook arguments pass through as literal
+          # unsubstituted text (see LOG.md). These built-ins always resolve,
+          # and inside a hook they refer to the pipeline workflow, which is
+          # exactly the one being diagnosed.
+          - "--workflow-name"
+          - "{{workflow.name}}"
+          - "--namespace"
+          - "{{workflow.namespace}}"
+          - "--checkout-path"
+          - "/workspace/src"
+        env:
+          - name: HOOK_WORKFLOW_NAME
+            value: "{{workflow.name}}"
+          - name: HOOK_NAMESPACE
+            value: argo
+          - name: VERIFIER
+            value: argo
+          - name: OLLAMA_BASE_URL
+            value: http://192.168.1.17:11434
+        resources:
+          requests: {cpu: 200m, memory: 512Mi}
+          limits: {cpu: "2", memory: 2Gi}

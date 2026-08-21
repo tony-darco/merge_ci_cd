@@ -7,6 +7,28 @@ spec:
   arguments:
     parameters:
       - name: image
+      # Read back by agent/context_builder.py from the workflow's own spec,
+      # so the exit-handler pod never needs a host git checkout to learn
+      # what commit failed or what it touched.
+      - name: commit-sha
+        value: ""
+      - name: changed-files
+        value: ""
+  # Fires the agent only on failure. `spec.hooks.exit` with an expression
+  # states that condition natively, rather than an onExit template that
+  # always runs and then filters itself (DECISIONS.md #18).
+  hooks:
+    exit:
+      expression: "workflow.status == 'Failed'"
+      templateRef:
+        name: run-agent-wft
+        template: main
+      arguments:
+        parameters:
+          - name: commit-sha
+            value: "{{workflow.parameters.commit-sha}}"
+          - name: image
+            value: "{{workflow.parameters.image}}"
   templates:
     - name: test
       container:

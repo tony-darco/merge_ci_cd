@@ -1,0 +1,65 @@
+# Sandboxed verification as a real Argo Workflow (DECISIONS.md #28) --
+# never a privileged container or a mounted Docker socket.
+#
+# Uses the M3 verification image and its entrypoint completely unchanged:
+# the script already expects source at /workspace/src, an optional patch at
+# /workspace/patch.diff, and writes /workspace/out/results.json. Argo just
+# supplies those paths as artifacts instead of Docker bind mounts, which is
+# the whole point of the build-once/mount-per-run design (#15).
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: agentic-fixer-verify-wft
+  namespace: agentic-fixer-sandbox
+spec:
+  serviceAccountName: sandbox-runner-sa
+  entrypoint: verify
+  arguments:
+    parameters:
+      - name: source-key      # minio key of the tarball fetch-source uploaded
+      - name: patch-diff      # empty string for the baseline run
+        value: ""
+  templates:
+    - name: verify
+      inputs:
+        parameters:
+          - name: source-key
+          - name: patch-diff
+        artifacts:
+          - name: source
+            path: /workspace/src
+            s3:
+              key: "{{inputs.parameters.source-key}}"
+          # `raw` keeps the diff out of the artifact store entirely -- it's
+          # small text, not a directory tree (DECISIONS.md #29). The
+          # entrypoint treats a zero-byte patch.diff as "baseline run",
+          # matching `if [ -f /workspace/patch.diff ]` semantics via the
+          # optional flag below.
+          - name: patch-diff
+            path: /workspace/patch.diff
+            optional: true
+            raw:
+              data: "{{inputs.parameters.patch-diff}}"
+      outputs:
+        parameters:
+          # Read back by ArgoVerifier via `kubectl get workflow -o json`,
+          # so no second artifact round-trip is needed just to learn the
+          # test results.
+          - name: results
+            valueFrom:
+              path: /workspace/out/results.json
+      container:
+        image: agentic-fixer-verify:base
+        imagePullPolicy: Never
+        # Stated explicitly rather than inherited from the image's
+        # ENTRYPOINT: Argo's emissary executor otherwise tries to look the
+        # command up from the registry, which 401s for an image that only
+        # exists locally via `k3d image import` (see LOG.md).
+        command: ["/usr/local/bin/verify-entrypoint.sh"]
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi

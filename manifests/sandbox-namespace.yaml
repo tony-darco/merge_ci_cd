@@ -92,6 +92,41 @@ spec:
         - protocol: TCP
           port: 6443
 ---
+# Artifact repository config, per namespace.
+#
+# The controller-level default in workflow-controller-configmap is a
+# `plugin: {name: test}` driver that does not exist, so any namespace
+# without its own config fails with "artifact driver test not found". The
+# argo namespace works only because the quick-start manifest installs this
+# same configmap there; the sandbox needs its own copy to pull the source
+# artifact (see LOG.md).
+#
+# The referenced `my-minio-cred` secret is NOT committed here -- copy it
+# from the argo namespace after applying this file:
+#   kubectl get secret my-minio-cred -n argo -o yaml \
+#     | sed 's/namespace: argo/namespace: agentic-fixer-sandbox/' \
+#     | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: artifact-repositories
+  namespace: agentic-fixer-sandbox
+  annotations:
+    workflows.argoproj.io/default-artifact-repository: default-v1
+data:
+  default-v1: |
+    archiveLogs: true
+    s3:
+      bucket: my-bucket
+      endpoint: minio.argo.svc.cluster.local:9000
+      insecure: true
+      accessKeySecret:
+        name: my-minio-cred
+        key: accesskey
+      secretKeySecret:
+        name: my-minio-cred
+        key: secretkey
+---
 # Identity for workflows running inside the sandbox. Argo's executor needs
 # to create/patch its own task results; nothing else is granted.
 apiVersion: v1

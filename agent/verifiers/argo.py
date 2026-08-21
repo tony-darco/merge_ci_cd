@@ -65,16 +65,40 @@ class ArgoVerifier(Verifier):
         )
 
     def _submit(self, diff_text: str | None) -> str:
-        args = [
-            "argo", "submit",
-            "--from", f"workflowtemplate/{VERIFY_WORKFLOW_TEMPLATE}",
-            "-n", SANDBOX_NAMESPACE,
-            "--parameter", f"source-key={self._fetch_source_artifact_key()}",
-            "--parameter", f"patch-diff={diff_text or ''}",
-            "-o", "name",
-        ]
-        result = subprocess.run(args, check=True, capture_output=True, text=True)
-        return result.stdout.strip()
+        """Create the Workflow via kubectl rather than `argo submit --from`.
+
+        Argo Workflows are just a CRD, so `workflowTemplateRef` in a plain
+        Workflow object does exactly what `argo submit --from` does -- which
+        keeps the argo CLI out of the agent image entirely (DECISIONS.md
+        #26). The first implementation here shelled out to `argo` and blew
+        up with FileNotFoundError in-cluster, contradicting that decision.
+        """
+        manifest = {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "kind": "Workflow",
+            "metadata": {
+                "generateName": f"{VERIFY_WORKFLOW_TEMPLATE}-",
+                "namespace": SANDBOX_NAMESPACE,
+            },
+            "spec": {
+                "workflowTemplateRef": {"name": VERIFY_WORKFLOW_TEMPLATE},
+                "arguments": {
+                    "parameters": [
+                        {"name": "source-key", "value": self._fetch_source_artifact_key()},
+                        {"name": "patch-diff", "value": diff_text or ""},
+                    ]
+                },
+            },
+        }
+        result = subprocess.run(
+            ["kubectl", "create", "-f", "-", "-o", "name"],
+            input=json.dumps(manifest),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        # "workflow.argoproj.io/<name>" -> "<name>"
+        return result.stdout.strip().split("/", 1)[-1]
 
     def _wait(self, name: str) -> dict:
         deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
