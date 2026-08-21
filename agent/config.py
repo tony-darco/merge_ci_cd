@@ -8,3 +8,10 @@ DIAGNOSIS_MODEL = os.environ.get("DIAGNOSIS_MODEL", "qwen3.5:latest")
 FIX_MODEL = os.environ.get("FIX_MODEL", "qwen3-coder:30b")
 
 ALL_CONFIGURED_MODELS = [TRIAGE_MODEL, TRIAGE_FALLBACK_MODEL, DIAGNOSIS_MODEL, FIX_MODEL]
+
+# Verification backend (DECISIONS.md #27): "docker" locally, "argo" inside
+# the cluster. The orchestrator's verify node is identical either way.
+VERIFIER = os.environ.get("VERIFIER", "docker")
+SANDBOX_NAMESPACE = os.environ.get("SANDBOX_NAMESPACE", "agentic-fixer-sandbox")
+VERIFY_WORKFLOW_TEMPLATE = os.environ.get("VERIFY_WORKFLOW_TEMPLATE", "agentic-fixer-verify-wft")
+SAMPLE_APP_REPO = os.environ.get("SAMPLE_APP_REPO", "https://github.com/tony-darco/sample-app.git")

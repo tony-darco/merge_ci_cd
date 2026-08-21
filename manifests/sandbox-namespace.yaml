@@ -1,0 +1,125 @@
+# Isolated namespace where candidate fixes get their tests run (M5).
+#
+# The NetworkPolicy is an egress ALLOWLIST, not a blanket deny (DECISIONS.md
+# #32). A blanket deny is the tempting version -- pytest against a mounted
+# checkout genuinely needs no network -- but the verification workflow also
+# has to pull its source artifact from minio and let Argo's executor report
+# node status to the API server. Denying those doesn't fail cleanly; it
+# hangs, which is far worse to debug. So: those two plus DNS are permitted,
+# and everything else (notably the public internet) is denied.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-fixer-sandbox
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandbox-quota
+  namespace: agentic-fixer-sandbox
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    pods: "10"
+---
+# Required companion to the ResourceQuota above: once a quota constrains
+# requests/limits, Kubernetes REJECTS any pod in the namespace that doesn't
+# declare all four values ("must specify limits.cpu for: ..."). Without
+# this, every verification workflow pod would be refused at admission
+# rather than merely throttled. Supplies the defaults so callers don't
+# each have to restate them.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: sandbox-defaults
+  namespace: agentic-fixer-sandbox
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1"
+        memory: 1Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress-allowlist
+  namespace: agentic-fixer-sandbox
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    # DNS -- needed to resolve the minio and API server service names.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The artifact store: where the source tarball comes from.
+    # Selected by pod label rather than the Service ClusterIP, because
+    # kube-proxy DNATs ClusterIP to the backing pod IP before the policy
+    # is evaluated -- an ipBlock on the ClusterIP would not match.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argo
+          podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    # The Kubernetes API server, so Argo's executor can report node status
+    # and handle artifacts. Lives outside the cluster pod network, so this
+    # one genuinely is an ipBlock (the k3d server node's address).
+    - to:
+        - ipBlock:
+            cidr: 172.18.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+---
+# Identity for workflows running inside the sandbox. Argo's executor needs
+# to create/patch its own task results; nothing else is granted.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-runner-sa
+  namespace: agentic-fixer-sandbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-runner-role
+  namespace: agentic-fixer-sandbox
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-runner-rolebinding
+  namespace: agentic-fixer-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sandbox-runner-role
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-runner-sa
+    namespace: agentic-fixer-sandbox

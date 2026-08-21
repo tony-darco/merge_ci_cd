@@ -22,7 +22,6 @@ from langgraph.graph import END, StateGraph
 from agent.agents.diagnosis import run_diagnosis
 from agent.agents.fix import run_fix
 from agent.agents.triage import run_triage
-from agent.agents.verify import run_verification
 from agent.confidence import compute_confidence
 from agent.guards.anticheat import check_diff
 from agent.guards.cascade_filter import select_root_failure
@@ -43,6 +42,7 @@ from agent.llm.schema import (
     VerificationResult,
 )
 from agent.tests.fixtures import load_fixture
+from agent.verifiers import get_verifier
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_APP_DIR = REPO_ROOT / "sample-app"
@@ -137,7 +137,7 @@ def _node_anticheat_guard(state: GraphState) -> dict:
 
 
 def _node_verify(state: GraphState) -> dict:
-    result = run_verification(state["checkout_path"], state["fix"].diff)
+    result = get_verifier().run(state["checkout_path"], state["fix"].diff)
     return {"verification": result}
 
 
@@ -223,7 +223,29 @@ def build_graph():
     return graph.compile()
 
 
+def run_graph_for_checkout(
+    context: FailureContext, checkout_path: Path, provider: LLMProvider
+) -> GraphState:
+    """The cluster-agnostic core: given a context and an already-prepared
+    source checkout, run the graph. M5's exit handler reaches this with a
+    checkout Argo mounted as an input artifact; the fixture-driven CLI
+    below reaches it with a local git worktree. Neither knows about the
+    other's mechanism.
+    """
+    initial_state: GraphState = {
+        "context": context,
+        "checkout_path": checkout_path,
+        "provider": provider,
+        "fix_attempts": 0,
+        "llm_calls": 0,
+    }
+    return build_graph().invoke(initial_state)
+
+
 def run_orchestrator(seed: str, provider: LLMProvider | None = None) -> GraphState:
+    """Fixture-driven CLI entrypoint: resolves a seed name to a local
+    worktree of sample-app, then hands off to run_graph_for_checkout.
+    """
     provider = provider or OllamaProvider()
     context = load_fixture(seed)
     branch = f"seed/{seed}"
@@ -234,21 +256,12 @@ def run_orchestrator(seed: str, provider: LLMProvider | None = None) -> GraphSta
             check=True, capture_output=True, text=True,
         )
         try:
-            graph = build_graph()
-            initial_state: GraphState = {
-                "context": context,
-                "checkout_path": Path(scratch),
-                "provider": provider,
-                "fix_attempts": 0,
-                "llm_calls": 0,
-            }
-            final_state = graph.invoke(initial_state)
+            return run_graph_for_checkout(context, Path(scratch), provider)
         finally:
             subprocess.run(
                 ["git", "-C", str(SAMPLE_APP_DIR), "worktree", "remove", "--force", scratch],
                 check=False, capture_output=True, text=True,
             )
-    return final_state
 
 
 def describe_outcome(state: GraphState) -> str:
@@ -283,6 +296,11 @@ def describe_outcome(state: GraphState) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", required=True)
+    parser.add_argument(
+        "--open-pr",
+        action="store_true",
+        help="open a real pull request when a fix verifies (M6; off by default so demo runs stay side-effect-free)",
+    )
     args = parser.parse_args()
 
     final_state = run_orchestrator(args.seed)

@@ -1,0 +1,78 @@
+# Scoped identity for the exit handler (M5). Every verb here traces to a
+# specific call the agent makes: reading the failed workflow's status and
+# its pod's logs (context_builder.py), and submitting/polling verification
+# workflows in the sandbox namespace (verifiers/argo.py). No wildcards --
+# M7's hardening pass audits this with `kubectl auth can-i --list`.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exit-handler-sa
+  namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exit-handler-role
+  namespace: argo
+rules:
+  # context_builder.py: find the failed pod, read its logs.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # context_builder.py: read the failed workflow's status.nodes and
+  # spec.arguments.parameters. verifiers/argo.py: read this hook
+  # workflow's own fetch-source artifact key (DECISIONS.md #29).
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["get", "list"]
+  # Argo's executor reports this hook workflow's own node status back.
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exit-handler-rolebinding
+  namespace: argo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: exit-handler-role
+subjects:
+  - kind: ServiceAccount
+    name: exit-handler-sa
+    namespace: argo
+---
+# Sandbox namespace: submit verification workflows and read their results.
+# Deliberately no pod/log access here -- results come back as workflow
+# output parameters, so the agent never needs to read inside the sandbox.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exit-handler-sandbox-role
+  namespace: agentic-fixer-sandbox
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["create", "get", "list"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtemplates"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exit-handler-sandbox-rolebinding
+  namespace: agentic-fixer-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: exit-handler-sandbox-role
+subjects:
+  - kind: ServiceAccount
+    name: exit-handler-sa
+    namespace: argo

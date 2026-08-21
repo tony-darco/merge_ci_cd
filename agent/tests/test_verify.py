@@ -10,9 +10,10 @@ from pathlib import Path
 
 import pytest
 
-import agent.agents.verify as verify_module
+import agent.verifiers.docker as docker_verifier_module
 from agent.agents.fix import _unified_diff_for
 from agent.agents.verify import run_verification
+from agent.verifiers.docker import DockerVerifier
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_APP_DIR = REPO_ROOT / "sample-app"
@@ -67,11 +68,12 @@ def test_wrong_fix_fails_verification(code_defect_checkout):
 
 
 def test_image_built_at_most_once_across_calls(code_defect_checkout, monkeypatch):
-    verify_module._image_built = False
+    verifier = DockerVerifier()
+    assert verifier._image_built is False
     diff = _real_fix_diff(code_defect_checkout)
 
-    run_verification(code_defect_checkout, diff)
-    assert verify_module._image_built is True
+    verifier.run(code_defect_checkout, diff)
+    assert verifier._image_built is True
 
     original_run = subprocess.run
 
@@ -79,5 +81,5 @@ def test_image_built_at_most_once_across_calls(code_defect_checkout, monkeypatch
         assert not (args[0] == "docker" and args[1] == "build"), "docker build ran on a second verification call"
         return original_run(args, *a, **kw)
 
-    monkeypatch.setattr(verify_module.subprocess, "run", spy)
-    run_verification(code_defect_checkout, diff)
+    monkeypatch.setattr(docker_verifier_module.subprocess, "run", spy)
+    verifier.run(code_defect_checkout, diff)

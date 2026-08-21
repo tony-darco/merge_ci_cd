@@ -65,6 +65,21 @@ def _fake_verification(passed: bool, delta: str) -> VerificationResult:
     )
 
 
+def _patch_verifier(monkeypatch, run_fn):
+    """The verify node resolves a Verifier via get_verifier() (DECISIONS.md
+    #27), so routing tests patch that seam rather than a module-level
+    function. run_fn(checkout_path, diff_text) -> VerificationResult.
+    """
+
+    class _FakeVerifier:
+        name = "fake"
+
+        def run(self, checkout_path, diff_text):
+            return run_fn(checkout_path, diff_text)
+
+    monkeypatch.setattr(orch, "get_verifier", lambda: _FakeVerifier())
+
+
 def _base_state() -> dict:
     return {
         "context": load_fixture("code-defect"),
@@ -107,7 +122,7 @@ def test_retry_with_feedback_then_succeeds(monkeypatch):
     monkeypatch.setattr(orch, "run_fix", fake_run_fix)
     monkeypatch.setattr(orch, "validate_diff", fake_validate_diff)
     monkeypatch.setattr(orch, "check_diff", fake_check_diff)
-    monkeypatch.setattr(orch, "run_verification", fake_run_verification)
+    _patch_verifier(monkeypatch, fake_run_verification)
 
     final_state = build_graph().invoke(_base_state())
 
@@ -143,7 +158,7 @@ def test_unresolved_after_max_fix_attempts(monkeypatch):
     monkeypatch.setattr(orch, "run_fix", fake_run_fix)
     monkeypatch.setattr(orch, "validate_diff", fake_validate_diff)
     monkeypatch.setattr(orch, "check_diff", fake_check_diff)
-    monkeypatch.setattr(orch, "run_verification", fake_run_verification)
+    _patch_verifier(monkeypatch, fake_run_verification)
 
     final_state = build_graph().invoke(_base_state())
 
@@ -181,7 +196,7 @@ def test_human_review_flag_stops_before_verify(monkeypatch):
     monkeypatch.setattr(orch, "run_fix", fake_run_fix)
     monkeypatch.setattr(orch, "validate_diff", fake_validate_diff)
     monkeypatch.setattr(orch, "check_diff", fake_check_diff)
-    monkeypatch.setattr(orch, "run_verification", never_called_verify)
+    _patch_verifier(monkeypatch, never_called_verify)
 
     final_state = build_graph().invoke(_base_state())
 
@@ -215,7 +230,7 @@ def test_full_success_path_computes_high_confidence(monkeypatch):
     monkeypatch.setattr(orch, "run_fix", fake_run_fix)
     monkeypatch.setattr(orch, "validate_diff", fake_validate_diff)
     monkeypatch.setattr(orch, "check_diff", fake_check_diff)
-    monkeypatch.setattr(orch, "run_verification", fake_run_verification)
+    _patch_verifier(monkeypatch, fake_run_verification)
 
     final_state = build_graph().invoke(_base_state())
 
