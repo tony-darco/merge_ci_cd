@@ -70,6 +70,9 @@ class GraphState(TypedDict, total=False):
     verification: VerificationResult
     llm_calls: int
     confidence: str
+    open_pr_enabled: bool
+    base_branch: str
+    pr_url: str
 
 
 def _extract_failed_node_ids(logs: dict[str, str]) -> list[str]:
@@ -141,6 +144,18 @@ def _node_verify(state: GraphState) -> dict:
     return {"verification": result}
 
 
+def _node_open_pr(state: GraphState) -> dict:
+    from agent.github import create_pull_request
+    from agent.trace import get_events
+
+    url = create_pull_request(
+        state["checkout_path"], state["context"], state["diagnosis"], state["fix"],
+        state["verification"], state["confidence"], get_events(),
+        base_branch=state.get("base_branch"),
+    )
+    return {"pr_url": url}
+
+
 def _node_confidence(state: GraphState) -> dict:
     score = compute_confidence(state["verification"], state["diagnosis"], state["fix"], state["fix_attempts"])
     return {"confidence": score}
@@ -188,6 +203,15 @@ def _route_after_verify(state: GraphState) -> str:
     return "unresolved"
 
 
+def _route_after_confidence(state: GraphState) -> str:
+    # Reached only when verification passed, so the fix is already known
+    # good by the time this runs. The remaining question is purely whether
+    # the operator asked for a PR: opening one is a side effect on a real
+    # repository and must never happen just because someone re-ran a demo
+    # (DECISIONS.md #31).
+    return "open_pr" if state.get("open_pr_enabled") else "done"
+
+
 def build_graph():
     graph = StateGraph(GraphState)
     graph.add_node("triage", _node_triage)
@@ -198,6 +222,7 @@ def build_graph():
     graph.add_node("anticheat_guard", _node_anticheat_guard)
     graph.add_node("verify", _node_verify)
     graph.add_node("confidence", _node_confidence)
+    graph.add_node("open_pr", _node_open_pr)
 
     graph.set_entry_point("triage")
     graph.add_conditional_edges("triage", _route_after_triage, {
@@ -219,12 +244,16 @@ def build_graph():
     graph.add_conditional_edges("verify", _route_after_verify, {
         "confidence": "confidence", "retry_fix": "fix", "unresolved": END,
     })
-    graph.add_edge("confidence", END)
+    graph.add_conditional_edges("confidence", _route_after_confidence, {
+        "open_pr": "open_pr", "done": END,
+    })
+    graph.add_edge("open_pr", END)
     return graph.compile()
 
 
 def run_graph_for_checkout(
-    context: FailureContext, checkout_path: Path, provider: LLMProvider
+    context: FailureContext, checkout_path: Path, provider: LLMProvider, open_pr: bool = False,
+    base_branch: str | None = None,
 ) -> GraphState:
     """The cluster-agnostic core: given a context and an already-prepared
     source checkout, run the graph. M5's exit handler reaches this with a
@@ -238,11 +267,13 @@ def run_graph_for_checkout(
         "provider": provider,
         "fix_attempts": 0,
         "llm_calls": 0,
+        "open_pr_enabled": open_pr,
+        "base_branch": base_branch,
     }
     return build_graph().invoke(initial_state)
 
 
-def run_orchestrator(seed: str, provider: LLMProvider | None = None) -> GraphState:
+def run_orchestrator(seed: str, provider: LLMProvider | None = None, open_pr: bool = False) -> GraphState:
     """Fixture-driven CLI entrypoint: resolves a seed name to a local
     worktree of sample-app, then hands off to run_graph_for_checkout.
     """
@@ -256,7 +287,9 @@ def run_orchestrator(seed: str, provider: LLMProvider | None = None) -> GraphSta
             check=True, capture_output=True, text=True,
         )
         try:
-            return run_graph_for_checkout(context, Path(scratch), provider)
+            return run_graph_for_checkout(
+                context, Path(scratch), provider, open_pr=open_pr, base_branch=branch
+            )
         finally:
             subprocess.run(
                 ["git", "-C", str(SAMPLE_APP_DIR), "worktree", "remove", "--force", scratch],
@@ -268,11 +301,14 @@ def describe_outcome(state: GraphState) -> str:
     if "confidence" in state:
         v = state["verification"]
         total = len(v.patched_summary.passed_tests) + len(v.patched_summary.failed_tests)
-        return (
+        line = (
             f"RESULT: verified fix, confidence={state['confidence']}, "
             f"{len(v.patched_summary.passed_tests)}/{total} passing, "
             f"{len(v.regressions)} regressions, {state.get('fix_attempts', 0)} fix attempt(s)"
         )
+        if state.get("pr_url"):
+            line += f"\n        PR opened for review: {state['pr_url']}"
+        return line
     if "verification" in state and not state["verification"].passed:
         return (
             f"RESULT: unresolved after {state.get('fix_attempts', 0)} fix attempt(s) -- "
@@ -303,7 +339,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    final_state = run_orchestrator(args.seed)
+    final_state = run_orchestrator(args.seed, open_pr=args.open_pr)
     print(describe_outcome(final_state))
 
 

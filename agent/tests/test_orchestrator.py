@@ -80,6 +80,22 @@ def _patch_verifier(monkeypatch, run_fn):
     monkeypatch.setattr(orch, "get_verifier", lambda: _FakeVerifier())
 
 
+def _mock_happy_path(monkeypatch):
+    """Everything green through to confidence, so a test can focus on what
+    happens after -- used by the PR-gating cases below.
+    """
+    from agent.guards.scope import ScopeCheckResult
+
+    monkeypatch.setattr(orch, "run_triage", lambda c, p: TriageResult(
+        category="CODE_DEFECT", reasoning="mocked", evidence_summary="mocked"))
+    monkeypatch.setattr(orch, "run_diagnosis", lambda c, r, p: _fake_diagnosis())
+    monkeypatch.setattr(orch, "run_fix", lambda d, c, cp, p, verification_feedback=None: _fake_fix())
+    monkeypatch.setattr(orch, "validate_diff", lambda d, r=None: ScopeCheckResult(rejected=False, reasons=[]))
+    monkeypatch.setattr(orch, "check_diff", lambda d, failing_test_names=None: AntiCheatResult(
+        rejected=False, reject_reasons=[], requires_human_review=False, review_reasons=[]))
+    _patch_verifier(monkeypatch, lambda cp, d: _fake_verification(passed=True, delta="0 failed"))
+
+
 def _base_state() -> dict:
     return {
         "context": load_fixture("code-defect"),
@@ -288,3 +304,58 @@ def test_flaky_path_retries_against_real_checkout(monkeypatch, flaky_checkout):
     else:
         assert "diagnosis" not in final_state
         assert "confirmed flake" in orch.describe_outcome(final_state)
+
+
+def test_pr_is_not_opened_unless_explicitly_requested(monkeypatch):
+    """Opening a PR is a side effect on a real repository. A plain demo run
+    must never cause one (DECISIONS.md #31).
+    """
+    _mock_happy_path(monkeypatch)
+
+    def never_called(*a, **kw):
+        raise AssertionError("create_pull_request must not run without --open-pr")
+
+    import agent.github
+    monkeypatch.setattr(agent.github, "create_pull_request", never_called)
+
+    final_state = build_graph().invoke(_base_state())
+
+    assert final_state["confidence"] == "HIGH"
+    assert "pr_url" not in final_state
+
+
+def test_pr_is_opened_when_requested_and_verification_passed(monkeypatch):
+    _mock_happy_path(monkeypatch)
+
+    import agent.github
+    monkeypatch.setattr(
+        agent.github, "create_pull_request",
+        lambda *a, **kw: "https://github.com/tony-darco/sample-app/pull/1",
+    )
+
+    state = _base_state()
+    state["open_pr_enabled"] = True
+    final_state = build_graph().invoke(state)
+
+    assert final_state["pr_url"].endswith("/pull/1")
+    assert "PR opened for review" in orch.describe_outcome(final_state)
+
+
+def test_failed_verification_never_opens_a_pr_even_when_requested(monkeypatch):
+    """The unresolved path must not reach open_pr at all -- a fix that did
+    not verify is exactly what must never reach a reviewer as a proposal.
+    """
+    _mock_happy_path(monkeypatch)
+    _patch_verifier(monkeypatch, lambda c, d: _fake_verification(passed=False, delta="still failing"))
+
+    import agent.github
+    def never_called(*a, **kw):
+        raise AssertionError("a failed verification must never open a PR")
+    monkeypatch.setattr(agent.github, "create_pull_request", never_called)
+
+    state = _base_state()
+    state["open_pr_enabled"] = True
+    final_state = build_graph().invoke(state)
+
+    assert "pr_url" not in final_state
+    assert "unresolved" in orch.describe_outcome(final_state)

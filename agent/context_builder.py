@@ -111,7 +111,9 @@ def main() -> None:
 
     from agent.llm.providers.ollama import OllamaProvider
 
-    final_state = run_graph_for_checkout(context, Path(args.checkout_path), OllamaProvider())
+    final_state = run_graph_for_checkout(
+        context, Path(args.checkout_path), OllamaProvider(), open_pr=args.open_pr
+    )
     print(describe_outcome(final_state))
 
 

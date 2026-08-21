@@ -17,3 +17,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["agent/tests"]
+# Live tests hit real external systems (GitHub, a running cluster) and have
+# real side effects, so they never run in a bare `pytest`. Opt in with
+# `pytest -m live`.
+addopts = "-m 'not live'"
+markers = [
+    "live: hits real external systems and has real side effects (opt in with -m live)",
+]
