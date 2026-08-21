@@ -1,23 +1,23 @@
 {
-  "workflow_name": "sample-pipeline-hand-authored-flaky",
+  "workflow_name": "sample-pipeline-wcpd5",
   "workflow_namespace": "argo",
   "failed_nodes": [
     {
-      "name": "sample-pipeline-hand-authored-flaky",
-      "display_name": "sample-pipeline-hand-authored-flaky",
+      "name": "sample-pipeline-wcpd5",
+      "display_name": "sample-pipeline-wcpd5",
       "message": "main: Error (exit code 1)",
       "template_name": "test",
       "phase": "Failed",
-      "pod_name": "sample-pipeline-hand-authored-flaky",
-      "finished_at": "2026-08-21T00:30:00Z"
+      "pod_name": "sample-pipeline-wcpd5",
+      "finished_at": "2026-08-21T11:45:50Z"
     }
   ],
   "logs": {
-    "sample-pipeline-hand-authored-flaky": "F                                                                        [100%]\n=================================== FAILURES ===================================\n____________________ test_probabilistic_rounding_edge_case _____________________\n\n    def test_probabilistic_rounding_edge_case():\n        # Seeded flaky test (see DECISIONS.md #19): fails ~15% of the time by\n        # construction, to exercise the triage flake-retry path. Not a real\n        # assertion about rounding behavior.\n>       assert random.random() > 0.15\nE       assert 0.0020098681849323174 > 0.15\nE        +  where 0.0020098681849323174 = <built-in method random of Random object at 0xc0ee88020>()\nE        +    where <built-in method random of Random object at 0xc0ee88020> = random.random\n\ntests/test_flaky_seed.py:8: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_flaky_seed.py::test_probabilistic_rounding_edge_case - asse...\n1 failed in 0.01s\n"
+    "sample-pipeline-wcpd5": "time=2026-08-21T11:45:49.934Z level=INFO msg=\"capturing logs\" argo=true\ntime=2026-08-21T11:45:49.934Z level=INFO msg=\"waiting for signals\" argo=true signalPath=/var/run/argo/ctr/main/signal\n........F......                                                          [100%]\n=================================== FAILURES ===================================\n____________________ test_probabilistic_rounding_edge_case _____________________\n\n    def test_probabilistic_rounding_edge_case():\n        # Seeded flaky test (see DECISIONS.md #19): fails ~15% of the time by\n        # construction, to exercise the triage flake-retry path. Not a real\n        # assertion about rounding behavior.\n>       assert random.random() > 0.15\nE       assert 0.13029206197922738 > 0.15\nE        +  where 0.13029206197922738 = <built-in method random of Random object at 0xaaab01ccf720>()\nE        +    where <built-in method random of Random object at 0xaaab01ccf720> = random.random\n\ntests/test_flaky_seed.py:8: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_flaky_seed.py::test_probabilistic_rounding_edge_case - asse...\n1 failed, 14 passed in 0.01s\ntime=2026-08-21T11:45:50.936Z level=INFO msg=\"sub-process exited\" argo=true error=\"exit status 1\"\ntime=2026-08-21T11:45:50.936Z level=INFO msg=\"file signal handler exiting due to context cancellation\" argo=true\nError: exit status 1\n"
   },
   "commit_sha": "81a4817b0646b5b47baa5c97354ead1da814cb33",
   "changed_files": [
     "tests/test_flaky_seed.py"
   ],
-  "timestamp": "2026-08-21T00:27:01.164378+00:00"
+  "timestamp": "2026-08-21T11:46:36.591940+00:00"
 }

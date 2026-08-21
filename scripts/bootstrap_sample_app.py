@@ -194,7 +194,9 @@ def test_probabilistic_rounding_edge_case():
     assert random.random() > 0.15
 """
 
-CONFIG_SECRET_TEST_CONTENT = """from sample_app.external_client import fetch_exchange_rate
+CONFIG_SECRET_TEST_CONTENT = """import os
+
+from sample_app.external_client import fetch_exchange_rate
 
 # Seed for the CONFIG_OR_SECRET triage category (see DECISIONS.md #17, #22).
 # Deliberately relies on the ambient API_TOKEN environment variable rather
@@ -204,6 +206,17 @@ CONFIG_SECRET_TEST_CONTENT = """from sample_app.external_client import fetch_exc
 
 
 def test_fetch_usd_rate_requires_real_token():
+    # A debug dump on the failure path, of the kind that genuinely leaks
+    # credentials into CI logs -- someone adds it to diagnose an auth
+    # failure and forgets the log is not a private place. This makes the
+    # captured fixture contain a real secret-shaped string, so
+    # guards/redaction.py is tested against a live log rather than a
+    # hand-authored one (DECISIONS.md #22). The key below is AWS's own
+    # published example value, not a real credential.
+    print("DEBUG auth context:", {
+        "API_TOKEN": os.environ.get("API_TOKEN", "<unset>"),
+        "AWS_ACCESS_KEY_ID": "AKIAIOSFODNN7EXAMPLE",
+    })
     assert fetch_exchange_rate("USD") == 1.0
 """
 

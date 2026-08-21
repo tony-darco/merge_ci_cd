@@ -286,10 +286,26 @@ def flaky_checkout():
 
 
 def test_flaky_path_retries_against_real_checkout(monkeypatch, flaky_checkout):
-    def fake_run_triage(context, provider):
-        return TriageResult(category="FLAKY", reasoning="mocked", evidence_summary="mocked")
+    """Exercises the real retry: `retry_flaky_test_locally` actually re-runs
+    the seeded test, which fails ~15% of the time by construction, so either
+    branch can be taken on any given run.
 
-    monkeypatch.setattr(orch, "run_triage", fake_run_triage)
+    Everything downstream of the retry is mocked -- including diagnosis.
+    That is not incidental: the reproduced branch continues into Diagnosis,
+    and an earlier version of this test left it unmocked with provider=None,
+    so the test itself failed roughly 15% of the time. A flaky test for the
+    flaky-test path is a special kind of unhelpful (see LOG.md).
+    """
+    from agent.guards.scope import ScopeCheckResult
+
+    monkeypatch.setattr(orch, "run_triage", lambda c, p: TriageResult(
+        category="FLAKY", reasoning="mocked", evidence_summary="mocked"))
+    monkeypatch.setattr(orch, "run_diagnosis", lambda c, r, p: _fake_diagnosis())
+    monkeypatch.setattr(orch, "run_fix", lambda d, c, cp, p, verification_feedback=None: _fake_fix())
+    monkeypatch.setattr(orch, "validate_diff", lambda d, r=None: ScopeCheckResult(rejected=False, reasons=[]))
+    monkeypatch.setattr(orch, "check_diff", lambda d, failing_test_names=None: AntiCheatResult(
+        rejected=False, reject_reasons=[], requires_human_review=False, review_reasons=[]))
+    _patch_verifier(monkeypatch, lambda cp, d: _fake_verification(passed=True, delta="0 failed"))
 
     state = _base_state()
     state["context"] = load_fixture("flaky-test")
@@ -299,12 +315,11 @@ def test_flaky_path_retries_against_real_checkout(monkeypatch, flaky_checkout):
 
     assert isinstance(final_state["retry_reproduced"], bool)
     if final_state["retry_reproduced"]:
-        assert "diagnosis" in final_state
+        assert "diagnosis" in final_state, "a reproducing flake is a real failure and must be diagnosed"
         assert "confirmed flake" not in orch.describe_outcome(final_state)
     else:
-        assert "diagnosis" not in final_state
+        assert "diagnosis" not in final_state, "a confirmed flake must never reach Diagnosis"
         assert "confirmed flake" in orch.describe_outcome(final_state)
-
 
 def test_pr_is_not_opened_unless_explicitly_requested(monkeypatch):
     """Opening a PR is a side effect on a real repository. A plain demo run

@@ -1,4 +1,5 @@
-from agent.guards.scope import validate_diff
+from agent.agents.fix import _unified_diff_for
+from agent.guards.scope import MAX_CHANGED_LINES, validate_diff
 
 _VALID_DIFF = """--- a/src/sample_app/discounts.py
 +++ b/src/sample_app/discounts.py
@@ -92,3 +93,27 @@ def test_rejects_diff_touching_agent_source():
 def test_rejects_unparseable_diff():
     result = validate_diff("this is not a diff at all")
     assert result.rejected is True
+
+
+# M7 boundary cases. The existing tests cover "clearly under" and "clearly
+# over"; an off-by-one in a budget check is exactly the kind of defect that
+# only shows at the edge, and this one gates how much LLM-authored change
+# can pass unreviewed.
+def _diff_changing_n_lines(n: int) -> str:
+    old = "\n".join(f"line {i}" for i in range(n)) + "\n"
+    new = "\n".join(f"changed {i}" for i in range(n)) + "\n"
+    return _unified_diff_for("src/sample_app/generated.py", old, new)
+
+
+def test_accepts_diff_exactly_at_the_line_budget():
+    # n changed lines => n removed + n added; pick n so the total is 150.
+    half = MAX_CHANGED_LINES // 2
+    result = validate_diff(_diff_changing_n_lines(half))
+    assert result.rejected is False, result.reasons
+
+
+def test_rejects_diff_one_line_over_the_budget():
+    half = MAX_CHANGED_LINES // 2
+    result = validate_diff(_diff_changing_n_lines(half + 1))
+    assert result.rejected is True
+    assert any("budget" in r for r in result.reasons)

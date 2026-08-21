@@ -1,23 +1,23 @@
 {
-  "workflow_name": "sample-pipeline-hand-authored-config-secret",
+  "workflow_name": "sample-pipeline-bmq5t",
   "workflow_namespace": "argo",
   "failed_nodes": [
     {
-      "name": "sample-pipeline-hand-authored-config-secret",
-      "display_name": "sample-pipeline-hand-authored-config-secret",
+      "name": "sample-pipeline-bmq5t",
+      "display_name": "sample-pipeline-bmq5t",
       "message": "main: Error (exit code 1)",
       "template_name": "test",
       "phase": "Failed",
-      "pod_name": "sample-pipeline-hand-authored-config-secret",
-      "finished_at": "2026-08-21T00:31:00Z"
+      "pod_name": "sample-pipeline-bmq5t",
+      "finished_at": "2026-08-21T11:38:52Z"
     }
   ],
   "logs": {
-    "sample-pipeline-hand-authored-config-secret": "F..............                                                          [100%]\n=================================== FAILURES ===================================\n___________________ test_fetch_usd_rate_requires_real_token ____________________\n\n    def test_fetch_usd_rate_requires_real_token():\n>       assert fetch_exchange_rate(\"USD\") == 1.0\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_config_secret_seed.py:11: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \nsrc/sample_app/external_client.py:19: in fetch_exchange_rate\n    token = get_api_token()\n            ^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def get_api_token() -> str:\n        token = os.environ.get(\"API_TOKEN\")\n        if not token:\n>           raise AuthenticationError(\"missing required environment variable: API_TOKEN\")\nE           sample_app.external_client.AuthenticationError: missing required environment variable: API_TOKEN\n\nsrc/sample_app/external_client.py:14: AuthenticationError\n=========================== short test summary info ============================\nFAILED tests/test_config_secret_seed.py::test_fetch_usd_rate_requires_real_token\n1 failed, 14 passed in 0.02s\n\nAKIAIOSFODNN7EXAMPLE  # fake AWS-shaped key, planted for guards/redaction.py's test (DECISIONS.md #22)\n"
+    "sample-pipeline-bmq5t": "time=2026-08-21T11:38:51.236Z level=INFO msg=\"capturing logs\" argo=true\ntime=2026-08-21T11:38:51.237Z level=INFO msg=\"waiting for signals\" argo=true signalPath=/var/run/argo/ctr/main/signal\nF..............                                                          [100%]\n=================================== FAILURES ===================================\n___________________ test_fetch_usd_rate_requires_real_token ____________________\n\n    def test_fetch_usd_rate_requires_real_token():\n        # A debug dump on the failure path, of the kind that genuinely leaks\n        # credentials into CI logs -- someone adds it to diagnose an auth\n        # failure and forgets the log is not a private place. This makes the\n        # captured fixture contain a real secret-shaped string, so\n        # guards/redaction.py is tested against a live log rather than a\n        # hand-authored one (DECISIONS.md #22). The key below is AWS's own\n        # published example value, not a real credential.\n        print(\"DEBUG auth context:\", {\n            \"API_TOKEN\": os.environ.get(\"API_TOKEN\", \"<unset>\"),\n            \"AWS_ACCESS_KEY_ID\": \"AKIAIOSFODNN7EXAMPLE\",\n        })\n>       assert fetch_exchange_rate(\"USD\") == 1.0\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_config_secret_seed.py:24: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \nsrc/sample_app/external_client.py:19: in fetch_exchange_rate\n    token = get_api_token()\n            ^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def get_api_token() -> str:\n        token = os.environ.get(\"API_TOKEN\")\n        if not token:\n>           raise AuthenticationError(\"missing required environment variable: API_TOKEN\")\nE           sample_app.external_client.AuthenticationError: missing required environment variable: API_TOKEN\n\nsrc/sample_app/external_client.py:14: AuthenticationError\n----------------------------- Captured stdout call -----------------------------\nDEBUG auth context: {'API_TOKEN': '<unset>', 'AWS_ACCESS_KEY_ID': 'AKIAIOSFODNN7EXAMPLE'}\n=========================== short test summary info ============================\nFAILED tests/test_config_secret_seed.py::test_fetch_usd_rate_requires_real_token\n1 failed, 14 passed in 0.02s\ntime=2026-08-21T11:38:52.242Z level=INFO msg=\"sub-process exited\" argo=true error=\"exit status 1\"\ntime=2026-08-21T11:38:52.242Z level=INFO msg=\"file signal handler exiting due to context cancellation\" argo=true\nError: exit status 1\n"
   },
-  "commit_sha": "3c4a99f6b0c2595da26a5b307ad6d853885ee941",
+  "commit_sha": "cdd3e31a84ed64e40d9c87ba1e12921d57c8ced3",
   "changed_files": [
     "tests/test_config_secret_seed.py"
   ],
-  "timestamp": "2026-08-21T00:27:01.164540+00:00"
+  "timestamp": "2026-08-21T11:39:39.923872+00:00"
 }

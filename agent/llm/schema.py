@@ -1,6 +1,17 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
+
+# Reasoning is mandatory, and enforcing it *here* rather than only at the
+# trace boundary is deliberate. agent/trace.py raises on empty reasoning --
+# a decision with no reasoning is a bug, not a logging gap -- but a model
+# that returns "" would then crash the run at record_trace time, well after
+# the point where anything could be done about it. Constraining the field
+# instead routes it into generate_structured's existing retry-with-feedback
+# loop, so the model is told to explain itself and asked again. Observed
+# live: qwen3.5:0.8b intermittently returns an empty reasoning string
+# (LOG.md).
+Reasoning = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 TriageCategory = Literal[
     "CODE_DEFECT",
@@ -44,7 +55,7 @@ class FailureContext(BaseModel):
 
 class TriageResult(BaseModel):
     category: TriageCategory
-    reasoning: str
+    reasoning: Reasoning
     evidence_summary: str
 
 
@@ -55,7 +66,7 @@ class EvidenceCitation(BaseModel):
 
 
 class DiagnosisResult(BaseModel):
-    root_cause: str
+    root_cause: Reasoning
     evidence: list[EvidenceCitation]
     alternative_hypothesis: str
     affected_files: list[str]
@@ -79,7 +90,7 @@ class FixProposal(BaseModel):
     """
 
     changed_files: list[ProposedFileChange]
-    rationale: str
+    rationale: Reasoning
     blast_radius: str
     lockfile_change_reason: str | None = None
 
@@ -91,7 +102,7 @@ class FixResult(BaseModel):
     """
 
     diff: str
-    rationale: str
+    rationale: Reasoning
     blast_radius: str
     lockfile_change_reason: str | None = None
 

@@ -14,14 +14,22 @@ Triage → Diagnosis → Fix → Scope Guard → Anti-Cheat Guard → Verify →
 - **Diagnosis** produces a root-cause hypothesis with cited log evidence — a hypothesis with no evidence backing it is rejected — and degrades to "insufficient evidence" rather than hallucinating when the log is empty or too short.
 - **Fix** reads only the relevant source files (following the failing test's own imports if Diagnosis pointed at the wrong file) and returns full replacement file content, which is then diffed against the real file with `difflib` — never a raw LLM-generated diff, which is a much less reliable format for small models to produce correctly.
 - **Scope Guard** and **Anti-Cheat Guard** are pure static analysis over the diff, enforced in code: a path allowlist, a line budget, a lockfile-needs-a-reason rule, and rejection of the obvious ways a naive agent "succeeds" — deleting the failing test, adding `@pytest.mark.skip`, weakening an assertion. None of this is prompt-only; a rule that only lives in the prompt isn't a rule.
-- **Verify** is fully deterministic, not LLM-backed: it runs the real test suite against baseline and patched checkouts in Docker and diffs the results by test id.
+- **Verify** is fully deterministic, not LLM-backed: it runs the real test suite against baseline and patched checkouts and diffs the results by test id. Two interchangeable backends share one interface — Docker locally, and real Argo Workflows in a sandbox namespace with a default-deny egress policy. The sandboxed one proves its own isolation before running anything and fails closed if it can't.
 - **Confidence** is computed purely from signals already produced by the run above — verification result, diagnosis ambiguity, diff size, fix-attempt count — never from an LLM self-reporting how confident it is.
+- **The PR** is opened only when a fix actually verified, only when explicitly asked for, and always left open for a human. Its body is assembled from the run's own recorded trace, states plainly what "verified" did and did not mean, and describes the environment the tests really ran in rather than claiming isolation it may not have had.
 
 All of this is orchestrated as a real [LangGraph](https://github.com/langchain-ai/langgraph) `StateGraph` ([agent/orchestrator.py](agent/orchestrator.py)), not a linear script — multi-agent orchestration with real conditional edges (refuse, retry-with-feedback, human-review-stop) is the actual architectural claim of this project, not incidental plumbing.
 
 Every decision any agent makes is recorded as a structured `TraceEvent` ([agent/trace.py](agent/trace.py)) with a `reasoning` field that's *validated non-empty* — a decision with no reasoning is treated as a bug, not a logging gap. Alongside that, [DECISIONS.md](DECISIONS.md) and [LOG.md](LOG.md) are living, non-negotiable deliverables: an ADR-style record of every architectural call (including the ones that turned out wrong) and a running log of what actually broke during the build and how it got fixed. Most agentic-CI demos don't publish that record; this one treats it as the most differentiating artifact of the project.
 
-**Status:** M0–M4 are complete — this is the "minimum demoable system": all four agents, both guards, Docker-first verification, and full LangGraph orchestration with confidence scoring, runnable end-to-end from the terminal with no cluster required. M5 (real Argo integration), M6 (PR creation), and M7 (hardening) are roadmap items, not yet built.
+**Status: complete (M0–M7).** The full loop runs live: a real Argo pipeline fails, an exit hook fires, the agents diagnose and fix, the fix is verified in a locked-down sandbox namespace, and a pull request is opened for human review with a confidence score and the decision trace that produced it.
+
+## The two writeups
+
+The most differentiating artifacts here are not the code:
+
+- **[DECISIONS.md](DECISIONS.md)** — an ADR-style record of all 35 architectural decisions, each with the alternatives considered and a stated confidence level, written at the moment of the decision rather than reconstructed afterward. Includes the ones that turned out wrong.
+- **[LOG.md](LOG.md)** — every problem that broke the build, written while it was broken: the symptom, what I assumed, what I tried, the actual root cause, and the fix. Many entries are more instructive than the code they explain — a NetworkPolicy that looked broken and wasn't, a scoped RBAC identity that was never actually in use, and a triage model measured at 67% accuracy on the project's own running example.
 
 ## Setup
 
@@ -67,6 +75,28 @@ uv run python -m agent.startup
 
 ## Running it
 
+### Run the full loop against a live cluster
+
+```bash
+k3d cluster create agentic-fixer --agents 1
+kubectl create namespace argo
+kubectl apply -n argo --server-side -f manifests/argo-install/quick-start-minimal.yaml
+kubectl apply -f manifests/sandbox-namespace.yaml
+kubectl get secret my-minio-cred -n argo -o yaml \
+  | sed 's/namespace: argo/namespace: agentic-fixer-sandbox/' | kubectl apply -f -
+kubectl apply -f manifests/exit-handler-rbac.yaml -f manifests/verify-workflow.yaml -f manifests/exit-hook.yaml
+
+docker build -t agentic-fixer-agent:latest .
+docker build -f verify/Dockerfile -t agentic-fixer-verify:base .
+k3d image import agentic-fixer-agent:latest agentic-fixer-verify:base -c agentic-fixer
+
+uv run scripts/submit_pipeline.py --seed code-defect
+```
+
+The pipeline fails, the exit hook fires, and the agent runs in-cluster. Watch it with
+`argo logs <workflow> -n argo`, and see the sandboxed verification workflows with
+`kubectl get workflows -n agentic-fixer-sandbox`.
+
 ### Run the orchestrator against a fixture
 
 ```bash
@@ -95,7 +125,9 @@ Each run creates and tears down a scratch git worktree of the seed branch automa
 uv run pytest agent/tests/ -v
 ```
 
-68 tests as of M4. Most are fixture-driven and need neither network nor Docker; `test_verify.py` needs Docker (it builds and runs the verification image for real); 13 tests across `test_triage.py`, `test_diagnosis.py`, `test_triage_fallback.py`, `test_registry.py`, and `test_log_slicer.py` call the real Ollama host and will fail with `httpx.ConnectTimeout` if it's unreachable — that's a network problem, not a code problem (see the M4 entries in [LOG.md](LOG.md) for exactly this happening and getting resolved).
+90 tests as of M7. Tests that hit real external systems (GitHub, a live cluster) are
+marked `live` and excluded from a bare `pytest`; run them with `pytest -m live`.
+Otherwise: Most are fixture-driven and need neither network nor Docker; `test_verify.py` needs Docker (it builds and runs the verification image for real); 13 tests across `test_triage.py`, `test_diagnosis.py`, `test_triage_fallback.py`, `test_registry.py`, and `test_log_slicer.py` call the real Ollama host and will fail with `httpx.ConnectTimeout` if it's unreachable — that's a network problem, not a code problem (see the M4 entries in [LOG.md](LOG.md) for exactly this happening and getting resolved).
 
 ### Run just the Fix Agent
 
@@ -106,6 +138,15 @@ uv run scripts/run_fix_agent.py --seed code-defect
 ```
 
 Writes the resulting diff to `out/<seed>-fix.diff` and prints both guards' verdicts.
+
+### Open a real pull request
+
+```bash
+uv run python -m agent.orchestrator --seed code-defect --open-pr
+```
+
+Off by default: opening a PR is a side effect on a real repository and shouldn't happen
+because someone re-ran a demo. Only reachable when verification actually passed.
 
 ### Redo the M0 fixture capture (optional)
 

@@ -48,6 +48,66 @@ spec:
           - name: results
             valueFrom:
               path: /workspace/out/results.json
+      # M7: close the enforcement race (LOG.md, DECISIONS.md #35).
+      #
+      # kube-router populates a NetworkPolicy's source ipset only after it
+      # observes the pod, so for the first seconds of its life a pod in this
+      # namespace matches no policy rule and egresses freely. A pytest run
+      # is short enough to finish inside that window, which would mean
+      # model-authored code running with unrestricted network access in the
+      # namespace built specifically to deny it.
+      #
+      # So gate the workload: probe a target the allowlist does NOT permit
+      # and refuse to start until that probe is actually blocked. Fails
+      # closed -- if isolation cannot be demonstrated within the timeout,
+      # the workflow errors instead of running the code anyway.
+      initContainers:
+        - name: await-network-policy
+          image: agentic-fixer-verify:base
+          imagePullPolicy: Never
+          command: ["sh", "-c"]
+          args:
+            - |
+              # 1.1.1.1:443 by raw IP: not in the allowlist, and using an IP
+              # avoids depending on DNS (which IS allowed, so a DNS failure
+              # would prove nothing about egress). Probed via python rather
+              # than bash's /dev/tcp -- this image's `sh` is dash, which has
+              # no such feature.
+              probe() {
+                python -c "import socket; socket.create_connection(('1.1.1.1',443),timeout=2).close()" 2>/dev/null
+              }
+              deadline=$(( $(date +%s) + 60 ))
+              saw_open=0
+              blocked_streak=0
+              while [ "$(date +%s)" -lt "$deadline" ]; do
+                if probe; then
+                  saw_open=1            # reachable => policy not yet binding
+                  blocked_streak=0
+                elif [ "$saw_open" -eq 1 ]; then
+                  echo "netpol: egress was open and is now blocked -- enforcement confirmed"
+                  exit 0
+                else
+                  # Blocked on every probe so far. Enforcement was already
+                  # active before this container started (the probe target
+                  # is reachable from an unpoliced namespace in this
+                  # cluster -- checked empirically, see DECISIONS.md #35).
+                  # Confirm over a few consecutive probes rather than
+                  # burning the whole timeout to reach the same conclusion.
+                  blocked_streak=$(( blocked_streak + 1 ))
+                  if [ "$blocked_streak" -ge 3 ]; then
+                    echo "netpol: non-allowlisted egress blocked on $blocked_streak consecutive" \
+                         "probes -- enforcement already in place. Proceeding."
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "netpol: egress to a non-allowlisted target still open after 60s --" \
+                   "refusing to run untrusted code unsandboxed" >&2
+              exit 1
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
       container:
         image: agentic-fixer-verify:base
         imagePullPolicy: Never
