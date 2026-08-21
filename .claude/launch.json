@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "argo-ui",
+      "port": 2746,
+      "url": "http://localhost:2746"
+    }
+  ]
+}

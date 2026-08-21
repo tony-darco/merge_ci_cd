@@ -1,0 +1,23 @@
+{
+  "workflow_name": "sample-pipeline-hand-authored-config-secret",
+  "workflow_namespace": "argo",
+  "failed_nodes": [
+    {
+      "name": "sample-pipeline-hand-authored-config-secret",
+      "display_name": "sample-pipeline-hand-authored-config-secret",
+      "message": "main: Error (exit code 1)",
+      "template_name": "test",
+      "phase": "Failed",
+      "pod_name": "sample-pipeline-hand-authored-config-secret",
+      "finished_at": "2026-08-21T00:31:00Z"
+    }
+  ],
+  "logs": {
+    "sample-pipeline-hand-authored-config-secret": "F..............                                                          [100%]\n=================================== FAILURES ===================================\n___________________ test_fetch_usd_rate_requires_real_token ____________________\n\n    def test_fetch_usd_rate_requires_real_token():\n>       assert fetch_exchange_rate(\"USD\") == 1.0\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests/test_config_secret_seed.py:11: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \nsrc/sample_app/external_client.py:19: in fetch_exchange_rate\n    token = get_api_token()\n            ^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def get_api_token() -> str:\n        token = os.environ.get(\"API_TOKEN\")\n        if not token:\n>           raise AuthenticationError(\"missing required environment variable: API_TOKEN\")\nE           sample_app.external_client.AuthenticationError: missing required environment variable: API_TOKEN\n\nsrc/sample_app/external_client.py:14: AuthenticationError\n=========================== short test summary info ============================\nFAILED tests/test_config_secret_seed.py::test_fetch_usd_rate_requires_real_token\n1 failed, 14 passed in 0.02s\n\nAKIAIOSFODNN7EXAMPLE  # fake AWS-shaped key, planted for guards/redaction.py's test (DECISIONS.md #22)\n"
+  },
+  "commit_sha": "3c4a99f6b0c2595da26a5b307ad6d853885ee941",
+  "changed_files": [
+    "tests/test_config_secret_seed.py"
+  ],
+  "timestamp": "2026-08-21T00:27:01.164540+00:00"
+}

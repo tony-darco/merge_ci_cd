@@ -1,0 +1,23 @@
+{
+  "workflow_name": "sample-pipeline-kkn25",
+  "workflow_namespace": "argo",
+  "failed_nodes": [
+    {
+      "name": "sample-pipeline-kkn25",
+      "display_name": "sample-pipeline-kkn25",
+      "message": "main: Error (exit code 1)",
+      "template_name": "test",
+      "phase": "Failed",
+      "pod_name": "sample-pipeline-kkn25",
+      "finished_at": "2026-08-21T00:24:51Z"
+    }
+  ],
+  "logs": {
+    "sample-pipeline-kkn25": "time=2026-08-21T00:24:50.719Z level=INFO msg=\"capturing logs\" argo=true\ntime=2026-08-21T00:24:50.719Z level=INFO msg=\"waiting for signals\" argo=true signalPath=/var/run/argo/ctr/main/signal\nFF.........FFF                                                           [100%]\n=================================== FAILURES ===================================\n__________________________ test_ten_percent_discount ___________________________\n\n>   ???\nE   assert 0.9 == 90.0\nE    +  where 0.9 = apply_percentage_discount(100.0, 10)\n\n/Users/tdarco/Documents/Projects/merge_ci_cd/sample-app/tests/test_discounts.py:7: AssertionError\n__________________________ test_zero_percent_discount __________________________\n\n>   ???\nE   assert 0.5 == 50.0\nE    +  where 0.5 = apply_percentage_discount(50.0, 0)\n\n/Users/tdarco/Documents/Projects/merge_ci_cd/sample-app/tests/test_discounts.py:11: AssertionError\n____________________ test_calculate_line_total_no_discount _____________________\n\n>   ???\nE   assert 0.3 == 30.0\nE    +  where 0.3 = calculate_line_total(3, 10.0, 0)\n\n/Users/tdarco/Documents/Projects/merge_ci_cd/sample-app/tests/test_pricing.py:5: AssertionError\n___________________ test_calculate_line_total_with_discount ____________________\n\n>   ???\nE   assert 0.9 == 90.0\nE    +  where 0.9 = calculate_line_total(2, 50.0, 10)\n\n/Users/tdarco/Documents/Projects/merge_ci_cd/sample-app/tests/test_pricing.py:9: AssertionError\n___________________ test_calculate_line_total_rounds_result ____________________\n\n>   ???\nE   assert 0.1 == 10.0\nE    +  where 0.1 = calculate_line_total(3, 3.333, 0)\n\n/Users/tdarco/Documents/Projects/merge_ci_cd/sample-app/tests/test_pricing.py:13: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_discounts.py::test_ten_percent_discount - assert 0.9 == 90.0\nFAILED tests/test_discounts.py::test_zero_percent_discount - assert 0.5 == 50.0\nFAILED tests/test_pricing.py::test_calculate_line_total_no_discount - assert ...\nFAILED tests/test_pricing.py::test_calculate_line_total_with_discount - asser...\nFAILED tests/test_pricing.py::test_calculate_line_total_rounds_result - asser...\n5 failed, 9 passed in 0.02s\ntime=2026-08-21T00:24:51.721Z level=INFO msg=\"sub-process exited\" argo=true error=\"exit status 1\"\ntime=2026-08-21T00:24:51.721Z level=INFO msg=\"file signal handler exiting due to context cancellation\" argo=true\nError: exit status 1\n"
+  },
+  "commit_sha": "4c4a2046ffa38a189d710b85e039024de4b2961c",
+  "changed_files": [
+    "src/sample_app/discounts.py"
+  ],
+  "timestamp": "2026-08-21T00:25:04.118605+00:00"
+}

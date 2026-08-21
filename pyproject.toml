@@ -1,0 +1,18 @@
+[project]
+name = "agentic-cicd-fixer"
+version = "0.1.0"
+description = "Agentic layer on top of Argo Workflows that diagnoses, fixes, and verifies CI pipeline failures"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2",
+    "httpx>=0.27",
+    "unidiff>=0.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["agent/tests"]

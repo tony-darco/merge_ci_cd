@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: sample-pipeline-
+spec:
+  entrypoint: test
+  arguments:
+    parameters:
+      - name: image
+  templates:
+    - name: test
+      container:
+        image: "{{workflow.parameters.image}}"
+        imagePullPolicy: Never
+        command: ["pytest", "-q"]
+    # Resource quantities are validated against a strict regex at workflow
+    # parse time, before {{workflow.parameters...}} substitution runs (see
+    # LOG.md) -- so the OOM seed gets its own template with a hardcoded
+    # limit, selected via `argo submit --entrypoint`, instead of a
+    # parameterized memory value.
+    - name: test-oom-limited
+      container:
+        image: "{{workflow.parameters.image}}"
+        imagePullPolicy: Never
+        command: ["pytest", "-q"]
+        resources:
+          limits:
+            memory: "16Mi"

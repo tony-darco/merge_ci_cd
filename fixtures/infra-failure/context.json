@@ -1,0 +1,21 @@
+{
+  "workflow_name": "sample-pipeline-zbh8m",
+  "workflow_namespace": "argo",
+  "failed_nodes": [
+    {
+      "name": "sample-pipeline-zbh8m",
+      "display_name": "sample-pipeline-zbh8m",
+      "message": "main: OOMKilled (exit code 137)",
+      "template_name": "test-oom-limited",
+      "phase": "Failed",
+      "pod_name": "sample-pipeline-zbh8m",
+      "finished_at": "2026-08-21T00:25:26Z"
+    }
+  ],
+  "logs": {
+    "sample-pipeline-zbh8m": ""
+  },
+  "commit_sha": "446736956f7d0c251047b9cdf2aae5bb2c112c20",
+  "changed_files": [],
+  "timestamp": "2026-08-21T00:25:42.475132+00:00"
+}
