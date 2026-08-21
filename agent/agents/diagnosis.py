@@ -67,10 +67,12 @@ def _build_prompt(changed_files: list[str], sliced_log: str) -> str:
 
 You MUST cite evidence: quote the specific log line(s) that support your hypothesis. A hypothesis with no log line backing it will be rejected.
 
+`affected_files` must name the SOURCE file(s) implicated in the root cause (the code that has the bug), not the test file(s) that merely detected it -- a fix has to be made to the source, not the test.
+
 Changed files: {changed_files}
 
 {sliced_log}
 
 Return JSON matching this schema exactly:
-{{"root_cause": "<one sentence root cause>", "evidence": [{{"source": "log", "excerpt": "<quoted log line>", "line_range": null}}], "alternative_hypothesis": "<a plausible alternative, or empty string if none>", "affected_files": ["<file path>", "..."], "category": "CODE_DEFECT"}}
+{{"root_cause": "<one sentence root cause>", "evidence": [{{"source": "log", "excerpt": "<quoted log line>", "line_range": null}}], "alternative_hypothesis": "<a plausible alternative, or empty string if none>", "affected_files": ["<file path, relative to the repo root, exactly as it would appear in a git diff -- e.g. 'src/sample_app/discounts.py' -- never an absolute path>", "..."], "category": "CODE_DEFECT"}}
 """
