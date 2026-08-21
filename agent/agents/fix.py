@@ -72,6 +72,16 @@ def _read_relevant_files(checkout_path: Path, diagnosis: DiagnosisResult, contex
 
 
 def _unified_diff_for(path: str, old_content: str, new_content: str) -> str:
+    # The model's returned new_content isn't guaranteed to end with a
+    # trailing newline (see LOG.md). difflib.unified_diff doesn't emit a
+    # "\ No newline at end of file" marker for that case -- it just leaves
+    # the last line bare, which GNU patch (unlike BSD patch) rejects as a
+    # malformed/truncated diff. Normalize both sides so the diff never
+    # depends on the model happening to include a final newline.
+    if old_content and not old_content.endswith("\n"):
+        old_content += "\n"
+    if new_content and not new_content.endswith("\n"):
+        new_content += "\n"
     old_lines = old_content.splitlines(keepends=True)
     new_lines = new_content.splitlines(keepends=True)
     diff_lines = difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}")

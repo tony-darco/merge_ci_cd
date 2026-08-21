@@ -101,3 +101,29 @@ class AntiCheatResult(BaseModel):
     reject_reasons: list[str]
     requires_human_review: bool
     review_reasons: list[str]
+
+
+class TestRunSummary(BaseModel):
+    """One `docker run`'s worth of pytest results, by test id. Stores both
+    passed and failed names (not just counts) because run_verification needs
+    the actual sets to compute regressions/newly_passing.
+    """
+
+    passed_tests: list[str]
+    failed_tests: list[str]
+
+
+class VerificationResult(BaseModel):
+    """Deterministic, not LLM-backed (DECISIONS.md #21) -- two docker runs
+    against the same pre-built image, diffed by test id. `passed` requires
+    the patched suite to be fully green, not merely no-worse-than-baseline:
+    a diff that neither fixes the target failure nor breaks anything else
+    still shouldn't be reported as a passing verification.
+    """
+
+    baseline_summary: TestRunSummary
+    patched_summary: TestRunSummary
+    delta: str
+    passed: bool
+    regressions: list[str]
+    newly_passing: list[str]
