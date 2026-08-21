@@ -89,10 +89,14 @@ def _unified_diff_for(path: str, old_content: str, new_content: str) -> str:
 
 
 def run_fix(
-    diagnosis: DiagnosisResult, context: FailureContext, checkout_path: Path, provider: LLMProvider
+    diagnosis: DiagnosisResult,
+    context: FailureContext,
+    checkout_path: Path,
+    provider: LLMProvider,
+    verification_feedback: str | None = None,
 ) -> FixResult:
     files = _read_relevant_files(checkout_path, diagnosis, context)
-    prompt = _build_prompt(diagnosis, files)
+    prompt = _build_prompt(diagnosis, files, verification_feedback)
     proposal, meta = provider.generate_structured(FIX_MODEL, prompt, FixProposal)
 
     diff_parts = []
@@ -134,15 +138,20 @@ def run_fix(
     return result
 
 
-def _build_prompt(diagnosis: DiagnosisResult, files: dict[str, str]) -> str:
+def _build_prompt(diagnosis: DiagnosisResult, files: dict[str, str], verification_feedback: str | None = None) -> str:
     file_blocks = "\n\n".join(
         f"--- {path} ---\n<file_content>\n{content}\n</file_content>" for path, content in files.items()
+    )
+    feedback_block = (
+        f"\nYour previous fix attempt did not pass verification: {verification_feedback}\n"
+        "Produce a different fix that addresses this.\n"
+        if verification_feedback else ""
     )
     return f"""You are a fix agent for a CI failure. Given the diagnosed root cause and the relevant source files, produce a minimal fix.
 
 Root cause: {diagnosis.root_cause}
 Evidence: {[e.excerpt for e in diagnosis.evidence]}
-
+{feedback_block}
 Constraints:
 - Only touch files under src/ or tests/.
 - Keep the fix minimal -- do not refactor or reformat unrelated code, and do not touch files that aren't part of the root cause.
